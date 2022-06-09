@@ -22,13 +22,16 @@
 #include "core/thread_pool.hh"
 #include "core/syscall_result.hh"
 #include "uname.hh"
+#include <optional>
 #include <seastar/core/print.hh>
 #include <seastar/core/reactor.hh>
 #include <seastar/core/internal/buffer_allocator.hh>
+#include <seastar/core/internal/pollable_fd.hh>
 #include <seastar/util/defer.hh>
 #include <seastar/util/read_first_line.hh>
 #include <chrono>
 #include <filesystem>
+#include <sys/epoll.h>
 #include <sys/poll.h>
 #include <sys/syscall.h>
 
@@ -50,11 +53,11 @@ namespace fs = std::filesystem;
 class pollable_fd_state_completion : public kernel_completion {
     promise<> _pr;
 public:
+    void abort(const std::optional<std::exception_ptr>& ex) noexcept {
+        _pr.set_exception(ex.value_or(make_exception_ptr(pollable_fd_aborted())));
+    }
     virtual void complete_with(ssize_t res) override {
         _pr.set_value();
-    }
-    void complete_with_exception(std::exception_ptr&& ptr) {
-        _pr.set_exception(std::move(ptr));
     }
     future<> get_future() {
         return _pr.get_future();
@@ -592,7 +595,7 @@ inline void aio_pollable_fd_state_completion::complete_with(ssize_t res) {
         return pollable_fd_state_completion::complete_with(res);
     }
     // mimics epoll backend behaviour on forget.
-    return complete_with_exception(std::make_exception_ptr(broken_promise()));
+    return pollable_fd_state_completion::abort(std::nullopt);
 }
 
 future<> reactor_backend_aio::poll(pollable_fd_state& fd, int events) {
@@ -904,6 +907,11 @@ public:
     void complete_with(int event) {
         get_desc(event)->complete_with(event);
     }
+
+    void abort(std::optional<std::exception_ptr> ex = std::nullopt) noexcept {
+        get_desc(EPOLLIN)->abort(ex);
+        get_desc(EPOLLOUT)->abort(ex);
+    }
 };
 
 bool reactor_backend_epoll::reap_kernel_completions() {
@@ -1008,6 +1016,7 @@ void reactor_backend_epoll::forget(pollable_fd_state& fd) noexcept {
         ::epoll_ctl(_epollfd.get(), EPOLL_CTL_DEL, fd.fd.get(), nullptr);
     }
     auto* efd = static_cast<epoll_pollable_fd_state*>(&fd);
+    efd->abort();
     delete efd;
 }
 
@@ -1264,7 +1273,7 @@ class reactor_backend_uring final : public reactor_backend {
                 return pollable_fd_state_completion::complete_with(res);
             }
             // mimics epoll backend behaviour on forget.
-            return complete_with_exception(std::make_exception_ptr(broken_promise()));
+            return abort(std::nullopt);
         }
     };
 
