@@ -160,7 +160,7 @@ aio_storage_context::handle_aio_error(linux_abi::iocb* iocb, int ec) {
         default:
             ++_r._io_stats.aio_errors;
             throw_system_error_on(true, "io_submit");
-            abort();
+            std::abort();
     }
 }
 
@@ -255,7 +255,7 @@ void aio_storage_context::schedule_retry() {
                     nr_consumed = handle_aio_error(iocbs[0], result.error);
                 } catch (...) {
                     seastar_logger.error("aio retry failed: {}. Aborting.", std::current_exception());
-                    abort();
+                    std::abort();
                 }
             } else {
                 nr_consumed = result.result;
@@ -738,7 +738,7 @@ reactor_backend_epoll::task_quota_timer_thread_fn() {
     auto r = ::pthread_sigmask(SIG_BLOCK, &mask, NULL);
     if (r) {
         seastar_logger.error("Thread {}: failed to block signals. Aborting.", thread_name.c_str());
-        abort();
+        std::abort();
     }
 
     // We need to wait until task quota is set before we can calculate how many ticks are to
@@ -829,7 +829,7 @@ reactor_backend_epoll::wait_and_process(int timeout, const sigset_t* active_sigm
         maybe_switch_steady_clock_timers(timeout, _steady_clock_timer_reactor_thread, _steady_clock_timer_timer_thread);
       } catch (...) {
         seastar_logger.error("Switching steady_clock timers back failed: {}. Aborting...", std::current_exception());
-        abort();
+        std::abort();
       }
     });
     std::array<epoll_event, 128> eevt;
@@ -1097,19 +1097,19 @@ reactor_backend_osv::wait_and_process_events(const sigset_t* sigset) {
 future<>
 reactor_backend_osv::readable(pollable_fd_state& fd) {
     std::cerr << "reactor_backend_osv does not support file descriptors - readable() shouldn't have been called!\n";
-    abort();
+    std::abort();
 }
 
 future<>
 reactor_backend_osv::writeable(pollable_fd_state& fd) {
     std::cerr << "reactor_backend_osv does not support file descriptors - writeable() shouldn't have been called!\n";
-    abort();
+    std::abort();
 }
 
 void
 reactor_backend_osv::forget(pollable_fd_state& fd) noexcept {
     std::cerr << "reactor_backend_osv does not support file descriptors - forget() shouldn't have been called!\n";
-    abort();
+    std::abort();
 }
 
 future<std::tuple<pollable_fd, socket_address>>
@@ -1158,7 +1158,7 @@ reactor_backend_osv::enable_timer(steady_clock_type::time_point when) {
 pollable_fd_state_ptr
 reactor_backend_osv::make_pollable_fd_state(file_desc fd, pollable_fd::speculation speculate) {
     std::cerr << "reactor_backend_osv does not support file descriptors - make_pollable_fd_state() shouldn't have been called!\n";
-    abort();
+    std::abort();
 }
 #endif
 
@@ -1428,7 +1428,7 @@ private:
                 // this path is unreachable. As more features of io_uring are exploited,
                 // we'll utilize more of these opcodes.
                 seastar_logger.error("Invalid operation for iocb: {}", req.opname());
-                abort();
+                std::abort();
         }
         ::io_uring_sqe_set_data(sqe, completion);
 
@@ -1519,7 +1519,7 @@ public:
             case EINTR:
                 return;
             default:
-                abort();
+                std::abort();
             }
         }
         did_work |= do_process_kernel_completions();
