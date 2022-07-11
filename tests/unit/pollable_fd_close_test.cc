@@ -43,6 +43,6 @@ SEASTAR_TEST_CASE(ongoing_readable_close_aborted_test) {
         auto future_read = read_end.read_some(buf, sizeof(buf));
         read_end.close();
 
-        BOOST_REQUIRE_THROW(future_read.get() , broken_promise);
+        BOOST_REQUIRE_THROW(future_read.get() , pollable_fd_aborted);
     });
 }
